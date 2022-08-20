@@ -10,31 +10,31 @@ import (
 )
 
 type MatrixOptions struct {
-	AccessToken string      `json:"access_token"`
-	DeviceID    id.DeviceID `json:"device_id"`
-	Homeserver  string      `json:"homeserver"`
-	UserID      id.UserID   `json:"user_id"`
+	AccessToken   string      `json:"accessToken"`
+	DeviceID      id.DeviceID `json:"deviceID"`
+	HomeserverURL string      `json:"homeserverURL"`
+	UserID        id.UserID   `json:"userID"`
 }
 
-func NewMatrixService(opts MatrixOptions) NotificationService {
-	return &matrixService{opts: opts}
+func NewMatrixService(opts MatrixOptions) (NotificationService, error) {
+	client, err := mautrix.NewClient(opts.HomeserverURL, opts.UserID, opts.AccessToken)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create matrix client: %v", err)
+	}
+	// normally gets set during client.Login
+	client.DeviceID = opts.DeviceID
+	return &matrixService{client, opts}, nil
 }
 
 type matrixService struct {
-	opts MatrixOptions
+	client *mautrix.Client
+	opts   MatrixOptions
 }
 
 func (s *matrixService) Send(notification Notification, dest Destination) error {
-	client, err := mautrix.NewClient(s.opts.Homeserver, s.opts.UserID, s.opts.AccessToken)
-	if err != nil {
-		return fmt.Errorf("couldn't create matrix client: %w", err)
-	}
-	// normally gets set during client.Login
-	client.DeviceID = s.opts.DeviceID
-
 	markdownContent := format.RenderMarkdown(notification.Message, true, true)
 
-	_, err = client.SendMessageEvent(id.RoomID(dest.Recipient), event.EventMessage, &event.MessageEventContent{
+	_, err := s.client.SendMessageEvent(id.RoomID(dest.Recipient), event.EventMessage, &event.MessageEventContent{
 		MsgType: event.MsgNotice,
 		Body:    markdownContent.Body,
 

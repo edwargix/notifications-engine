@@ -125,7 +125,7 @@ func NewService(serviceType string, optsData []byte) (NotificationService, error
 		if err := yaml.Unmarshal(optsData, &opts); err != nil {
 			return nil, err
 		}
-		return NewMatrixService(opts), nil
+		return NewMatrixService(opts)
 	case "mattermost":
 		var opts MattermostOptions
 		if err := yaml.Unmarshal(optsData, &opts); err != nil {
