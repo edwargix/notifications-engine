@@ -24,7 +24,7 @@ require (
 	github.com/slack-go/slack v0.10.1
 	github.com/spf13/cobra v1.3.0
 	github.com/stretchr/objx v0.2.0 // indirect
-	github.com/stretchr/testify v1.7.0
+	github.com/stretchr/testify v1.7.1
 	github.com/whilp/git-urls v0.0.0-20191001220047-6db9661140c0
 	golang.org/x/time v0.0.0-20210723032227-1f47c861a9ac
 	gomodules.xyz/notify v0.1.0
@@ -32,6 +32,7 @@ require (
 	k8s.io/api v0.23.3
 	k8s.io/apimachinery v0.23.3
 	k8s.io/client-go v0.23.3
+	maunium.net/go/mautrix v0.11.0
 )
 
 // https://github.com/golang/go/issues/33546#issuecomment-519656923
