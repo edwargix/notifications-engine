@@ -19,7 +19,7 @@ type MatrixOptions struct {
 func NewMatrixService(opts MatrixOptions) (NotificationService, error) {
 	client, err := mautrix.NewClient(opts.HomeserverURL, opts.UserID, opts.AccessToken)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create matrix client: %v", err)
+		return nil, fmt.Errorf("failed to create matrix client: %w", err)
 	}
 	// normally gets set during client.Login
 	client.DeviceID = opts.DeviceID
