@@ -68,7 +68,7 @@ func (s *matrixService) Send(notification Notification, dest Destination) error 
 
 	resp, err := s.client.JoinedRooms()
 	if err != nil {
-		log.Errorf("couldn't fetch list of joined rooms; will attempt to send message regardless: %w", err)
+		log.Errorf("couldn't fetch list of joined rooms; will attempt to send message regardless: %s", err)
 	} else {
 		hasJoined := false
 		for _, joinedRoomID := range resp.JoinedRooms {
