@@ -92,7 +92,7 @@ func (s *matrixService) Send(notification Notification, dest Destination) error 
 		}
 	}
 
-	_, err = s.client.SendMessageEvent(id.RoomID(dest.Recipient), event.EventMessage, &event.MessageEventContent{
+	_, err = s.client.SendMessageEvent(id.RoomID(roomID), event.EventMessage, &event.MessageEventContent{
 		MsgType: event.MsgNotice,
 		Body:    markdownContent.Body,
 
