@@ -2,6 +2,7 @@ package services
 
 import (
 	"fmt"
+	"strings"
 
 	log "github.com/sirupsen/logrus"
 	"maunium.net/go/mautrix"
@@ -51,17 +52,18 @@ func (s *matrixService) Send(notification Notification, dest Destination) error 
 
 	// assume destination is a room ID
 	roomID := id.RoomID(dest.Recipient)
-	var roomAlias id.RoomAlias
+	serverName := ""
 
 	// check if destination is instead a room alias
 	if dest.Recipient[0] == '#' {
 		// resolve room alias to room ID
-		roomAlias = id.RoomAlias(dest.Recipient)
+		roomAlias := id.RoomAlias(dest.Recipient)
 		resp, err := s.client.ResolveAlias(roomAlias)
 		if err != nil {
 			return fmt.Errorf("couldn't resolve room alias '%s': %w", dest.Recipient, err)
 		}
 		roomID = resp.RoomID
+		_, serverName, _ = strings.Cut(roomAlias.String(), ":")
 	}
 
 	markdownContent := format.RenderMarkdown(notification.Message, true, true)
@@ -78,16 +80,9 @@ func (s *matrixService) Send(notification Notification, dest Destination) error 
 			}
 		}
 		if !hasJoined {
-			if roomAlias != "" {
-				_, err := s.client.JoinRoom(roomAlias.String(), "", nil)
-				if err != nil {
-					return fmt.Errorf("couldn't join room '%s': %w", roomAlias, err)
-				}
-			} else {
-				_, err := s.client.JoinRoom(roomID.String(), "", nil)
-				if err != nil {
-					return fmt.Errorf("couldn't join room '%s': %w", roomID, err)
-				}
+			_, err := s.client.JoinRoom(roomID.String(), serverName, nil)
+			if err != nil {
+				return fmt.Errorf("couldn't join room '%s': %w", roomID, err)
 			}
 		}
 	}
