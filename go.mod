@@ -17,9 +17,11 @@ require (
 	github.com/gregdel/pushover v1.1.0
 	github.com/huandu/xstrings v1.3.0 // indirect
 	github.com/imdario/mergo v0.3.8 // indirect
+	github.com/mattn/go-sqlite3 v1.14.14
 	github.com/mitchellh/copystructure v1.0.0 // indirect
 	github.com/opsgenie/opsgenie-go-sdk-v2 v1.0.5
 	github.com/prometheus/client_golang v1.4.0
+	github.com/rs/zerolog v1.27.0
 	github.com/sirupsen/logrus v1.6.0
 	github.com/slack-go/slack v0.10.1
 	github.com/spf13/cobra v1.3.0
@@ -40,3 +42,5 @@ require (
 
 // https://github.com/golang/go/issues/33546#issuecomment-519656923
 replace github.com/go-check/check => github.com/go-check/check v0.0.0-20180628173108-788fd7840127
+
+replace maunium.net/go/mautrix => /home/edwargix/git/mautrix-go
