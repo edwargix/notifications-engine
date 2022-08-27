@@ -47,7 +47,9 @@ func NewMatrixService(opts MatrixOptions) (NotificationService, error) {
 	client.DeviceID = opts.DeviceID
 
 	// set up e2ee
-	if opts.DataPath != "" {
+	if opts.DataPath == "" {
+		log.Warnf("no datapath configured; skipping end-to-end encryption setup")
+	} else {
 		cryptoDB, err := sql.Open("sqlite3", path.Join(opts.DataPath,  "crypto.db"))
 		if err != nil {
 			return nil, fmt.Errorf("couldn't open crypto db: %w", err)
