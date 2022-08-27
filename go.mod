@@ -21,7 +21,6 @@ require (
 	github.com/mitchellh/copystructure v1.0.0 // indirect
 	github.com/opsgenie/opsgenie-go-sdk-v2 v1.0.5
 	github.com/prometheus/client_golang v1.4.0
-	github.com/rs/zerolog v1.27.0
 	github.com/sirupsen/logrus v1.6.0
 	github.com/slack-go/slack v0.10.1
 	github.com/spf13/cobra v1.3.0
@@ -37,10 +36,9 @@ require (
 	k8s.io/api v0.23.3
 	k8s.io/apimachinery v0.23.3
 	k8s.io/client-go v0.23.3
+	maunium.net/go/maulogger/v2 v2.3.2
 	maunium.net/go/mautrix v0.12.0
 )
 
 // https://github.com/golang/go/issues/33546#issuecomment-519656923
 replace github.com/go-check/check => github.com/go-check/check v0.0.0-20180628173108-788fd7840127
-
-replace maunium.net/go/mautrix => /home/edwargix/git/mautrix-go
