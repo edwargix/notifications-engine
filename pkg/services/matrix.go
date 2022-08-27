@@ -69,7 +69,7 @@ func NewMatrixService(opts MatrixOptions) (NotificationService, error) {
 
 		err = cryptoStore.Upgrade()
 		if err != nil {
-			log.Fatalf("couldn't upgrade crypto store tables: %v", err)
+			return nil, fmt.Errorf("couldn't upgrade crypto store tables: %w", err)
 		}
 	}
 
