@@ -8,14 +8,13 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 	log "github.com/sirupsen/logrus"
+	"maunium.net/go/maulogger/v2"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/crypto"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
 	"maunium.net/go/mautrix/util/dbutil"
-
-	zl "github.com/rs/zerolog/log"
 )
 
 type MatrixOptions struct {
@@ -47,9 +46,6 @@ func NewMatrixService(opts MatrixOptions) (NotificationService, error) {
 	// normally gets set during client.Login
 	client.DeviceID = opts.DeviceID
 
-	zl.Print("ohea")
-	log.Warnf("")
-
 	// set up e2ee
 	if opts.DataPath != "" {
 		cryptoDB, err := sql.Open("sqlite3", path.Join(opts.DataPath,  "crypto.db"))
@@ -57,17 +53,24 @@ func NewMatrixService(opts MatrixOptions) (NotificationService, error) {
 			return nil, fmt.Errorf("couldn't open crypto db: %w", err)
 		}
 		defer cryptoDB.Close()
+
 		db, err := dbutil.NewWithDB(cryptoDB, "sqlite3")
+		if err != nil {
+			return nil, fmt.Errorf("couldn't create crypto db: %w", err)
+		}
+
 		cryptoStore := crypto.NewSQLCryptoStore(
 			db,
-			nil,
+			dbutil.MauLogger(maulogger.DefaultLogger),
 			fmt.Sprintf("%s/%s", client.UserID, client.DeviceID),
 			client.DeviceID,
 			[]byte("argocd"),
-			// cryptoLogger,
 		)
-		err = cryptoStore.CreateTables()
-		cryptoStore.Upgrade()
+
+		err = cryptoStore.Upgrade()
+		if err != nil {
+			log.Fatalf("couldn't upgrade crypto store tables: %v", err)
+		}
 	}
 
 	return &matrixService{client, opts}, nil
