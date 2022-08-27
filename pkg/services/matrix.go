@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path"
 	"strings"
+	"sync"
 
 	_ "github.com/mattn/go-sqlite3"
 	log "github.com/sirupsen/logrus"
@@ -50,6 +51,9 @@ func NewMatrixService(opts MatrixOptions) (NotificationService, error) {
 	if opts.DataPath == "" {
 		log.Warnf("no datapath configured; skipping end-to-end encryption setup")
 	} else {
+		store := newMatrixStore()
+		cryptoLogger := matrixCryptoLogger{}
+
 		cryptoDB, err := sql.Open("sqlite3", path.Join(opts.DataPath,  "crypto.db"))
 		if err != nil {
 			return nil, fmt.Errorf("couldn't open crypto db: %w", err)
@@ -73,6 +77,33 @@ func NewMatrixService(opts MatrixOptions) (NotificationService, error) {
 		if err != nil {
 			return nil, fmt.Errorf("couldn't upgrade crypto store tables: %w", err)
 		}
+
+		olmMachine := crypto.NewOlmMachine(client, cryptoLogger, cryptoStore, store)
+		err = olmMachine.Load()
+		if err != nil {
+			return nil, fmt.Errorf("couldn't load olm machine: %w", err)
+		}
+
+		// enter double-ratchet
+		syncer := client.Syncer.(*mautrix.DefaultSyncer)
+		syncer.OnSync(olmMachine.ProcessSyncResponse)
+		syncer.OnEventType(event.StateMember, func(_ mautrix.EventSource, evt *event.Event) {
+			olmMachine.HandleMemberEvent(evt)
+		})
+		syncer.OnEvent(store.UpdateState)
+		syncer.OnEventType(event.EventEncrypted, func(_ mautrix.EventSource, encEvt *event.Event) {
+			_, err := olmMachine.DecryptMegolmEvent(encEvt)
+			if err != nil {
+				log.Errorf("couldn't decrypt event %v: %v", encEvt.ID, err)
+				return
+			}
+		})
+		syncer.OnEvent(func (_ mautrix.EventSource, evt *event.Event) {
+			err := olmMachine.FlushStore()
+			if err != nil {
+				panic(err)
+			}
+		})
 	}
 
 	return &matrixService{client, opts}, nil
@@ -136,4 +167,142 @@ func (s *matrixService) Send(notification Notification, dest Destination) error 
 		return fmt.Errorf("couldn't send matrix message: %w", err)
 	}
 	return nil
+}
+
+type matrixStore struct {
+	sync.RWMutex
+	FilterIDs map[id.UserID]string
+	NextBatches map[id.UserID]string
+	Rooms map[id.RoomID]*mautrix.Room
+}
+
+func newMatrixStore() *matrixStore {
+	return &matrixStore{
+		FilterIDs: make(map[id.UserID]string),
+		NextBatches: make(map[id.UserID]string),
+		Rooms: make(map[id.RoomID]*mautrix.Room),
+	}
+}
+
+// mautrix.Storer interface implemented below
+
+func (s *matrixStore) SaveFilterID(userID id.UserID, filterID string) {
+	s.Lock()
+	defer s.Unlock()
+	s.FilterIDs[userID] = filterID
+}
+
+func (s *matrixStore) LoadFilterID(userID id.UserID) string {
+	s.RLock()
+	defer s.RUnlock()
+	return s.FilterIDs[userID]
+}
+
+func (s *matrixStore) SaveNextBatch(userID id.UserID, nextBatchToken string) {
+	s.Lock()
+	defer s.Unlock()
+	s.NextBatches[userID] = nextBatchToken
+}
+
+func (s *matrixStore) LoadNextBatch(userID id.UserID) string {
+	s.RLock()
+	defer s.RUnlock()
+	return s.NextBatches[userID]
+}
+
+func (s *matrixStore) SaveRoom(room *mautrix.Room) {
+	s.Lock()
+	defer s.Unlock()
+	s.Rooms[room.ID] = room
+}
+
+func (s *matrixStore) LoadRoom(roomID id.RoomID) *mautrix.Room {
+	s.RLock()
+	defer s.RUnlock()
+	return s.Rooms[roomID]
+}
+
+func (s *matrixStore) UpdateState(_ mautrix.EventSource, evt *event.Event) {
+	if !evt.Type.IsState() {
+		return
+	}
+	room := s.LoadRoom(evt.RoomID)
+	if room == nil {
+		room = mautrix.NewRoom(evt.RoomID)
+		s.SaveRoom(room)
+	}
+	room.UpdateState(evt)
+}
+
+// crypto.StateStore interface implemented below
+
+// IsEncrypted returns whether a room is encrypted.
+func (s *matrixStore) IsEncrypted(roomID id.RoomID) bool {
+	s.RLock()
+	defer s.RUnlock()
+	if room, exists := s.Rooms[roomID]; exists {
+		return room.GetStateEvent(event.StateEncryption, "") != nil
+	}
+	return false
+}
+
+// GetEncryptionEvent returns the encryption event's content for an encrypted room.
+func (s *matrixStore) GetEncryptionEvent(roomID id.RoomID) *event.EncryptionEventContent {
+	s.RLock()
+	defer s.RUnlock()
+	room, exists := s.Rooms[roomID]
+	if !exists {
+		return nil
+	}
+	evt := room.GetStateEvent(event.StateEncryption, "")
+	content, ok := evt.Content.Parsed.(*event.EncryptionEventContent)
+	if !ok {
+		return nil
+	}
+	return content
+}
+
+// FindSharedRooms returns the encrypted rooms that another user is also in for a user ID.
+func (s *matrixStore) FindSharedRooms(userID id.UserID) []id.RoomID {
+	s.RLock()
+	defer s.RUnlock()
+	var sharedRooms []id.RoomID
+	for roomID, room := range s.Rooms {
+		// if room isn't encrypted, skip
+		if room.GetStateEvent(event.StateEncryption, "") == nil {
+			continue
+		}
+		if room.GetMembershipState(userID) == event.MembershipJoin {
+			sharedRooms = append(sharedRooms, roomID)
+		}
+	}
+	return sharedRooms
+}
+
+func (s *matrixStore) GetRoomMembers(roomID id.RoomID) []id.UserID {
+	var members []id.UserID
+	for userID, evt := range s.Rooms[roomID].State[event.StateMember] {
+		if evt.Content.Parsed.(*event.MemberEventContent).Membership.IsInviteOrJoin() {
+			members = append(members, id.UserID(userID))
+		}
+	}
+	return members
+}
+
+type matrixCryptoLogger struct{}
+
+func (f matrixCryptoLogger) Error(message string, args ...interface{}) {
+	log.Errorf(message, args...)
+}
+
+func (f matrixCryptoLogger) Warn(message string, args ...interface{}) {
+	log.Warnf(message, args...)
+}
+
+func (f matrixCryptoLogger) Debug(message string, args ...interface{}) {
+	log.Debugf(message, args...)
+}
+
+func (f matrixCryptoLogger) Trace(message string, args ...interface{}) {
+	log.Tracef(message, args...)
 }
