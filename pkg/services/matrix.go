@@ -93,13 +93,6 @@ func NewMatrixService(opts MatrixOptions) (NotificationService, error) {
 			olmMachine.HandleMemberEvent(evt)
 		})
 		syncer.OnEvent(store.UpdateState)
-		syncer.OnEventType(event.EventEncrypted, func(_ mautrix.EventSource, encEvt *event.Event) {
-			_, err := olmMachine.DecryptMegolmEvent(encEvt)
-			if err != nil {
-				log.Errorf("couldn't decrypt event %v: %v", encEvt.ID, err)
-				return
-			}
-		})
 		syncer.OnEvent(func(_ mautrix.EventSource, evt *event.Event) {
 			err := olmMachine.FlushStore()
 			if err != nil {
