@@ -54,7 +54,7 @@ func NewMatrixService(opts MatrixOptions) (NotificationService, error) {
 		store := newMatrixStore()
 		cryptoLogger := matrixCryptoLogger{}
 
-		cryptoDB, err := sql.Open("sqlite3", path.Join(opts.DataPath,  "crypto.db"))
+		cryptoDB, err := sql.Open("sqlite3", path.Join(opts.DataPath, "crypto.db"))
 		if err != nil {
 			return nil, fmt.Errorf("couldn't open crypto db: %w", err)
 		}
@@ -84,7 +84,6 @@ func NewMatrixService(opts MatrixOptions) (NotificationService, error) {
 			return nil, fmt.Errorf("couldn't load olm machine: %w", err)
 		}
 
-		// enter double-ratchet
 		syncer := client.Syncer.(*mautrix.DefaultSyncer)
 		syncer.OnSync(olmMachine.ProcessSyncResponse)
 		syncer.OnEventType(event.StateMember, func(_ mautrix.EventSource, evt *event.Event) {
@@ -98,7 +97,7 @@ func NewMatrixService(opts MatrixOptions) (NotificationService, error) {
 				return
 			}
 		})
-		syncer.OnEvent(func (_ mautrix.EventSource, evt *event.Event) {
+		syncer.OnEvent(func(_ mautrix.EventSource, evt *event.Event) {
 			err := olmMachine.FlushStore()
 			if err != nil {
 				panic(err)
@@ -171,16 +170,16 @@ func (s *matrixService) Send(notification Notification, dest Destination) error 
 
 type matrixStore struct {
 	sync.RWMutex
-	FilterIDs map[id.UserID]string
+	FilterIDs   map[id.UserID]string
 	NextBatches map[id.UserID]string
-	Rooms map[id.RoomID]*mautrix.Room
+	Rooms       map[id.RoomID]*mautrix.Room
 }
 
 func newMatrixStore() *matrixStore {
 	return &matrixStore{
-		FilterIDs: make(map[id.UserID]string),
+		FilterIDs:   make(map[id.UserID]string),
 		NextBatches: make(map[id.UserID]string),
-		Rooms: make(map[id.RoomID]*mautrix.Room),
+		Rooms:       make(map[id.RoomID]*mautrix.Room),
 	}
 }
 
