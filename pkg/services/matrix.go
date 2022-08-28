@@ -2,7 +2,9 @@ package services
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"os"
 	"path"
 	"strings"
 	"sync"
@@ -49,9 +51,9 @@ func NewMatrixService(opts MatrixOptions) (NotificationService, error) {
 
 	// set up e2ee
 	if opts.DataPath == "" {
-		log.Warnf("no datapath configured; skipping end-to-end encryption setup")
+		log.Infof("no datapath configured; skipping end-to-end encryption setup")
 	} else {
-		store := newMatrixStore()
+		store := newMatrixStore(opts.DataPath)
 		cryptoLogger := matrixCryptoLogger{}
 
 		cryptoDB, err := sql.Open("sqlite3", path.Join(opts.DataPath, "crypto.db"))
@@ -103,6 +105,7 @@ func NewMatrixService(opts MatrixOptions) (NotificationService, error) {
 				panic(err)
 			}
 		})
+		go client.Sync()
 	}
 
 	return &matrixService{client, opts}, nil
@@ -168,18 +171,88 @@ func (s *matrixService) Send(notification Notification, dest Destination) error 
 	return nil
 }
 
-type matrixStore struct {
-	sync.RWMutex
-	FilterIDs   map[id.UserID]string
-	NextBatches map[id.UserID]string
-	Rooms       map[id.RoomID]*mautrix.Room
+type matrixSyncer struct {
+	*mautrix.DefaultSyncer
 }
 
-func newMatrixStore() *matrixStore {
+func newMatrixSyncer() mautrix.Syncer {
+	return &matrixSyncer{
+		mautrix.NewDefaultSyncer(),
+	}
+}
+
+func (s *matrixSyncer) GetFilterJSON(userID id.UserID) *mautrix.Filter {
+	all := []event.Type{event.NewEventType("*")}
+	noTypes := mautrix.FilterPart{NotTypes: all}
+	stateEvtTypes := []event.Type{
+		event.StateCreate,
+		event.StateEncryption,
+		event.StateMember,
+	}
+	return &mautrix.Filter{
+		AccountData: noTypes,
+		// EventFields:
+		// EventFormat:
+		Presence: noTypes,
+		Room: mautrix.RoomFilter{
+			State: mautrix.FilterPart{
+				LazyLoadMembers: true,
+				Type: stateEvtTypes,
+			},
+			Timeline: mautrix.FilterPart{
+				Types: append(stateEvtTypes),
+			},
+		},
+	}
+}
+
+type matrixStore struct {
+	sync.RWMutex
+	FilterIDs       map[id.UserID]string
+	FilterIDsPath   string
+	NextBatches     map[id.UserID]string
+	NextBatchesPath string
+	Rooms           map[id.RoomID]*mautrix.Room
+	RoomsPath       string
+}
+
+func newMatrixStore(dataPath string) *matrixStore {
+	var wg sync.WaitGroup
+
+	decode := func(path string, ptr interface{}) {
+		defer wg.Done()
+		f, err := os.Open(path)
+		if err != nil {
+			log.Warnf("couldn't open file %s for matrix store: %v", path, err)
+			return
+		}
+		err = json.NewDecoder(f).Decode(ptr)
+		if err != nil {
+			log.Warnf("couldn't decode file %s for matrix store: %v", path, err)
+			return
+		}
+	}
+
+	filterIDs := make(map[id.UserID]string)
+	filterIDsPath := path.Join(dataPath, "filter_ids.json")
+	nextBatches := make(map[id.UserID]string)
+	nextBatchesPath := path.Join(dataPath, "next_batches.json")
+	rooms := make(map[id.RoomID]*mautrix.Room)
+	roomsPath := path.Join(dataPath, "rooms.json")
+
+	wg.Add(3)
+	go decode(filterIDsPath, &filterIDs)
+	go decode(nextBatchesPath, &nextBatches)
+	go decode(roomsPath, &rooms)
+	wg.Wait()
+
 	return &matrixStore{
-		FilterIDs:   make(map[id.UserID]string),
-		NextBatches: make(map[id.UserID]string),
-		Rooms:       make(map[id.RoomID]*mautrix.Room),
+		FilterIDs:       filterIDs,
+		FilterIDsPath:   filterIDsPath,
+		NextBatches:     nextBatches,
+		NextBatchesPath: nextBatchesPath,
+		Rooms:           rooms,
+		RoomsPath:       roomsPath,
 	}
 }
 
@@ -189,6 +262,8 @@ func (s *matrixStore) SaveFilterID(userID id.UserID, filterID string) {
 	s.Lock()
 	defer s.Unlock()
 	s.FilterIDs[userID] = filterID
+	// os.Create()
+	// os.OpenFile()
 }
 
 func (s *matrixStore) LoadFilterID(userID id.UserID) string {
@@ -200,7 +275,17 @@ func (s *matrixStore) LoadFilterID(userID id.UserID) string {
 func (s *matrixStore) SaveNextBatch(userID id.UserID, nextBatchToken string) {
 	s.Lock()
 	defer s.Unlock()
+	if s.NextBatches[userID] == nextBatchToken {
+		return
+	}
 	s.NextBatches[userID] = nextBatchToken
+	f, err := os.OpenFile(s.NextBatchesPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	defer f.Close()
+	if err != nil {
+		log.Errorf("couldn't open next batch file for matrix service: %v", err)
+		return
+	}
+	f.WriteString(nextBatchToken)
 }
 
 func (s *matrixStore) LoadNextBatch(userID id.UserID) string {
