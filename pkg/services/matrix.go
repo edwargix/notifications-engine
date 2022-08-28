@@ -49,10 +49,11 @@ func NewMatrixService(opts MatrixOptions) (NotificationService, error) {
 	// normally gets set during client.Login
 	client.DeviceID = opts.DeviceID
 
-	// set up e2ee
 	if opts.DataPath == "" {
 		log.Infof("no datapath configured; skipping end-to-end encryption setup")
 	} else {
+		// set up e2ee
+		client.Syncer = newMatrixSyncer()
 		store := newMatrixStore(opts.DataPath)
 		cryptoLogger := matrixCryptoLogger{}
 
@@ -186,21 +187,17 @@ func (s *matrixSyncer) GetFilterJSON(userID id.UserID) *mautrix.Filter {
 	noTypes := mautrix.FilterPart{NotTypes: all}
 	stateEvtTypes := []event.Type{
 		event.StateCreate,
-		event.StateEncryption,
 		event.StateMember,
 	}
 	return &mautrix.Filter{
 		AccountData: noTypes,
-		// EventFields:
-		// EventFormat:
 		Presence: noTypes,
 		Room: mautrix.RoomFilter{
 			State: mautrix.FilterPart{
-				LazyLoadMembers: true,
-				Type: stateEvtTypes,
+				Types: stateEvtTypes,
 			},
 			Timeline: mautrix.FilterPart{
-				Types: append(stateEvtTypes),
+				Types: stateEvtTypes,
 			},
 		},
 	}
@@ -262,8 +259,6 @@ func (s *matrixStore) SaveFilterID(userID id.UserID, filterID string) {
 	s.Lock()
 	defer s.Unlock()
 	s.FilterIDs[userID] = filterID
-	// os.Create()
-	// os.OpenFile()
 }
 
 func (s *matrixStore) LoadFilterID(userID id.UserID) string {
