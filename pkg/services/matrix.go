@@ -255,7 +255,6 @@ func (s *matrixSyncer) GetFilterJSON(userID id.UserID) *mautrix.Filter {
 	all := []event.Type{event.NewEventType("*")}
 	noTypes := mautrix.FilterPart{NotTypes: all}
 	stateEvtTypes := []event.Type{
-		event.StateCreate,
 		event.StateEncryption,
 		event.StateMember,
 	}
