@@ -202,7 +202,7 @@ func (s *matrixSyncer) GetFilterJSON(userID id.UserID) *mautrix.Filter {
 type matrixStore struct {
 	sync.RWMutex
 
-	storePath   string                      `json:"-"`
+	storePath string `json:"-"`
 
 	FilterIDs   map[id.UserID]string        `json:"-"`
 	NextBatches map[id.UserID]string        `json:"next_batches"`
