@@ -100,7 +100,7 @@ func (s *matrixService) Send(notification Notification, dest Destination) error 
 		_, serverName, _ = strings.Cut(roomAlias.String(), ":")
 	}
 
-	// join room if possible
+	// join room if needed and possible
 	room := client.Store.LoadRoom(roomID)
 	mem := room.GetMembershipState(client.UserID)
 	isEncrypted := room.GetStateEvent(event.StateEncryption, "") != nil
