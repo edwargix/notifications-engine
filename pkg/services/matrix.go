@@ -53,11 +53,11 @@ func NewMatrixService(opts MatrixOptions) (NotificationService, error) {
 		log.Infof("no datapath configured; skipping end-to-end encryption setup")
 	} else {
 		// set up e2ee
+		client.Syncer = newMatrixSyncer()
 		store, err := newMatrixStore(opts.DataPath)
 		if err != nil {
 			return nil, fmt.Errorf("couldn't create matrix store for crypto: %w", err)
 		}
-		client.Syncer = newMatrixSyncer()
 		cryptoLogger := matrixCryptoLogger{}
 
 		cryptoDB, err := sql.Open("sqlite3", path.Join(opts.DataPath, "crypto.db"))
