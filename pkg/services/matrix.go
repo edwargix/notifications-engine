@@ -199,6 +199,8 @@ func (s *matrixSyncer) GetFilterJSON(userID id.UserID) *mautrix.Filter {
 	}
 }
 
+const matrixStoreVersion = 0
+
 type matrixStore struct {
 	sync.RWMutex
 
@@ -207,21 +209,19 @@ type matrixStore struct {
 	FilterIDs   map[id.UserID]string        `json:"-"`
 	NextBatches map[id.UserID]string        `json:"next_batches"`
 	Rooms       map[id.RoomID]*mautrix.Room `json:"rooms"`
+	Version     int                         `json:"version"`
 }
 
 func newMatrixStore(dataPath string) (*matrixStore, error) {
-	filterIDs := make(map[id.UserID]string)
-	nextBatches := make(map[id.UserID]string)
-	rooms := make(map[id.RoomID]*mautrix.Room)
-
 	storePath := path.Join(dataPath, "store.json")
 
 	store := &matrixStore{
 		sync.RWMutex{},
 		storePath,
-		filterIDs,
-		nextBatches,
-		rooms,
+		make(map[id.UserID]string),
+		make(map[id.UserID]string),
+		make(map[id.RoomID]*mautrix.Room),
+		-1,
 	}
 
 	f, err := os.Open(storePath)
@@ -231,6 +231,20 @@ func newMatrixStore(dataPath string) (*matrixStore, error) {
 	err = json.NewDecoder(f).Decode(&store)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't decode matrix store when reading file %s: %w", storePath, err)
+	}
+
+	// this code is either too new or too old for the store on disk
+	if store.Version != matrixStoreVersion {
+		log.Warnf("the matrix store at path %s is version %d but this version of argo only supports %d; doing a full sync...", storePath)
+
+		store = &matrixStore{
+			sync.RWMutex{},
+			storePath,
+			make(map[id.UserID]string),
+			make(map[id.UserID]string),
+			make(map[id.RoomID]*mautrix.Room),
+			matrixStoreVersion,
+		}
 	}
 
 	return store, nil
