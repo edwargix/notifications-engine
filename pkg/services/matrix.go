@@ -136,7 +136,6 @@ func matrixInitCrypto(client *mautrix.Client, opts MatrixOptions) error {
 	if err != nil {
 		return fmt.Errorf("couldn't open crypto db: %w", err)
 	}
-	defer cryptoDB.Close()
 
 	db, err := dbutil.NewWithDB(cryptoDB, "sqlite3")
 	if err != nil {
