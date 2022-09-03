@@ -49,18 +49,25 @@ func NewMatrixService(opts MatrixOptions) (NotificationService, error) {
 	// normally gets set during client.Login
 	client.DeviceID = opts.DeviceID
 
-	service := &matrixService{
-		client: client,
-		opts:   opts,
-	}
-
 	// set up e2ee if possible
-	err = matrixInitCrypto(service)
-	if err != nil {
-		return nil, fmt.Errorf("couldn't initialize matrix crypto: %w", err)
+	var olmMachine *crypto.OlmMachine
+	if dataPath := opts.DataPath; dataPath != "" {
+		olmMachine, err = matrixInitCrypto(dataPath, client)
+		if err != nil {
+			return nil, fmt.Errorf("couldn't initialize matrix crypto: %w", err)
+		}
+	} else {
+		// when there's no dataPath, we can't store e2ee keys
+		log.Infof("no dataPath configured for matrix service; skipping end-to-end encryption setup")
+		syncer := client.Syncer.(*mautrix.DefaultSyncer)
+		syncer.OnEvent(client.Store.(*mautrix.InMemoryStore).UpdateState)
 	}
 
-	return service, nil
+	return &matrixService{
+		client,
+		olmMachine,
+		opts,
+	}, nil
 }
 
 type matrixService struct {
@@ -159,21 +166,10 @@ func isBadEncryptError(err error) bool {
 	return err != crypto.SessionExpired && err != crypto.SessionNotShared && err != crypto.NoGroupSession
 }
 
-func matrixInitCrypto(service *matrixService) error {
-	client := service.client
-
-	// if there's no datapath, we can't store e2ee keys
-	dataPath := service.opts.DataPath
-	if dataPath == "" {
-		log.Infof("no datapath configured for matrix service; skipping end-to-end encryption setup")
-		syncer := client.Syncer.(*mautrix.DefaultSyncer)
-		syncer.OnEvent(client.Store.(*mautrix.InMemoryStore).UpdateState)
-		return nil
-	}
-
+func matrixInitCrypto(dataPath string, client *mautrix.Client) (*crypto.OlmMachine, error) {
 	store, err := newMatrixStore(dataPath)
 	if err != nil {
-		return fmt.Errorf("couldn't create matrix store for crypto: %w", err)
+		return nil, fmt.Errorf("couldn't create matrix store for crypto: %w", err)
 	}
 
 	client.Syncer = newMatrixSyncer(store)
@@ -183,12 +179,12 @@ func matrixInitCrypto(service *matrixService) error {
 
 	cryptoDB, err := sql.Open("sqlite3", path.Join(dataPath, "crypto.db"))
 	if err != nil {
-		return fmt.Errorf("couldn't open crypto db: %w", err)
+		return nil, fmt.Errorf("couldn't open crypto db: %w", err)
 	}
 
 	db, err := dbutil.NewWithDB(cryptoDB, "sqlite3")
 	if err != nil {
-		return fmt.Errorf("couldn't create crypto db: %w", err)
+		return nil, fmt.Errorf("couldn't create crypto db: %w", err)
 	}
 
 	cryptoStore := crypto.NewSQLCryptoStore(
@@ -201,15 +197,14 @@ func matrixInitCrypto(service *matrixService) error {
 
 	err = cryptoStore.Upgrade()
 	if err != nil {
-		return fmt.Errorf("couldn't upgrade crypto store tables: %w", err)
+		return nil, fmt.Errorf("couldn't upgrade crypto store tables: %w", err)
 	}
 
 	olmMachine := crypto.NewOlmMachine(client, cryptoLogger, cryptoStore, store)
 	err = olmMachine.Load()
 	if err != nil {
-		return fmt.Errorf("couldn't load olm machine: %w", err)
+		return nil, fmt.Errorf("couldn't load olm machine: %w", err)
 	}
-	service.olmMachine = olmMachine
 
 	syncer := client.Syncer.(*mautrix.DefaultSyncer)
 	syncer.OnSync(olmMachine.ProcessSyncResponse)
@@ -229,7 +224,8 @@ func matrixInitCrypto(service *matrixService) error {
 			log.Errorf("matrix client sync failed: %v", err)
 		}
 	}()
-	return nil
+
+	return olmMachine, nil
 }
 
 type matrixSyncer struct {
