@@ -63,6 +63,13 @@ func NewMatrixService(opts MatrixOptions) (NotificationService, error) {
 		syncer.OnEvent(client.Store.(*mautrix.InMemoryStore).UpdateState)
 	}
 
+	go func() {
+		err := client.Sync()
+		if err != nil {
+			log.Errorf("matrix client sync failed: %v", err)
+		}
+	}()
+
 	return &matrixService{
 		client,
 		olmMachine,
@@ -219,13 +226,6 @@ func matrixInitCrypto(dataPath string, client *mautrix.Client) (*crypto.OlmMachi
 			panic(err)
 		}
 	})
-
-	go func() {
-		err := client.Sync()
-		if err != nil {
-			log.Errorf("matrix client sync failed: %v", err)
-		}
-	}()
 
 	return olmMachine, nil
 }
