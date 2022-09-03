@@ -75,6 +75,8 @@ func (s *matrixService) Send(notification Notification, dest Destination) error 
 		return fmt.Errorf("destination cannot be empty")
 	}
 
+	client := s.client
+
 	// assume destination is a room ID
 	roomID := id.RoomID(dest.Recipient)
 	serverName := ""
@@ -83,7 +85,7 @@ func (s *matrixService) Send(notification Notification, dest Destination) error 
 	if dest.Recipient[0] == '#' {
 		// resolve room alias to room ID
 		roomAlias := id.RoomAlias(dest.Recipient)
-		resp, err := s.client.ResolveAlias(roomAlias)
+		resp, err := client.ResolveAlias(roomAlias)
 		if err != nil {
 			return fmt.Errorf("couldn't resolve room alias '%s': %w", dest.Recipient, err)
 		}
@@ -93,23 +95,15 @@ func (s *matrixService) Send(notification Notification, dest Destination) error 
 
 	markdownContent := format.RenderMarkdown(notification.Message, true, true)
 
-	// TODO use room state instead
-	resp, err := s.client.JoinedRooms()
-	if err != nil {
-		log.Errorf("couldn't fetch list of joined rooms; will attempt to send message regardless: %s", err)
-	} else {
-		hasJoined := false
-		for _, joinedRoomID := range resp.JoinedRooms {
-			if joinedRoomID == roomID {
-				hasJoined = true
-				break
-			}
-		}
-		if !hasJoined {
-			_, err := s.client.JoinRoom(roomID.String(), serverName, nil)
-			if err != nil {
-				return fmt.Errorf("couldn't join room '%s': %w", roomID, err)
-			}
+	// join room if possible
+	room := client.Store.LoadRoom(roomID)
+	mem := room.GetMembershipState(client.UserID)
+	if mem == event.MembershipBan {
+		return fmt.Errorf("can't send to matrix room '%s' where we're banned", roomID)
+	} else if mem != event.MembershipJoin {
+		_, err := client.JoinRoom(roomID.String(), serverName, nil)
+		if err != nil {
+			return fmt.Errorf("couldn't join matrix room '%s': %w", roomID, err)
 		}
 	}
 
@@ -122,7 +116,7 @@ func (s *matrixService) Send(notification Notification, dest Destination) error 
 		FormattedBody: markdownContent.FormattedBody,
 	}
 
-	if s.store != nil && s.store.IsEncrypted(roomID) {
+	if s.olmMachine != nil && s.store.IsEncrypted(roomID) {
 		encrypted, err := s.olmMachine.EncryptMegolmEvent(roomID, evtType, content)
 		if isBadEncryptError(err) {
 			return fmt.Errorf("couldn't encrypt matrix event: %w", err)
@@ -141,7 +135,7 @@ func (s *matrixService) Send(notification Notification, dest Destination) error 
 		content = encrypted
 	}
 
-	r, err := s.client.SendMessageEvent(roomID, evtType, content)
+	r, err := client.SendMessageEvent(roomID, evtType, content)
 	if err != nil {
 		return fmt.Errorf("couldn't send matrix message: %w", err)
 	}
@@ -154,10 +148,14 @@ func isBadEncryptError(err error) bool {
 }
 
 func matrixInitCrypto(service *matrixService) error {
+	client := service.client
+
 	// if there's no datapath, we can't store e2ee keys
 	dataPath := service.opts.DataPath
 	if dataPath == "" {
 		log.Infof("no datapath configured for matrix service; skipping end-to-end encryption setup")
+		syncer := client.Syncer.(*mautrix.DefaultSyncer)
+		syncer.OnEvent(client.Store.(*mautrix.InMemoryStore).UpdateState)
 		return nil
 	}
 
@@ -166,8 +164,8 @@ func matrixInitCrypto(service *matrixService) error {
 		return fmt.Errorf("couldn't create matrix store for crypto: %w", err)
 	}
 
-	client := service.client
 	client.Syncer = newMatrixSyncer(store)
+	client.Store = store
 
 	cryptoLogger := matrixCryptoLogger{}
 
@@ -205,7 +203,6 @@ func matrixInitCrypto(service *matrixService) error {
 	syncer.OnEventType(event.StateMember, func(_ mautrix.EventSource, evt *event.Event) {
 		olmMachine.HandleMemberEvent(evt)
 	})
-	syncer.OnEvent(store.UpdateState)
 	syncer.OnEvent(func(_ mautrix.EventSource, evt *event.Event) {
 		err := olmMachine.FlushStore()
 		if err != nil {
