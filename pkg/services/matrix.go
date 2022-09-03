@@ -49,60 +49,10 @@ func NewMatrixService(opts MatrixOptions) (NotificationService, error) {
 	// normally gets set during client.Login
 	client.DeviceID = opts.DeviceID
 
-	if opts.DataPath == "" {
-		log.Infof("no datapath configured; skipping end-to-end encryption setup")
-	} else {
-		// set up e2ee
-		client.Syncer = newMatrixSyncer()
-		store, err := newMatrixStore(opts.DataPath)
-		if err != nil {
-			return nil, fmt.Errorf("couldn't create matrix store for crypto: %w", err)
-		}
-		cryptoLogger := matrixCryptoLogger{}
-
-		cryptoDB, err := sql.Open("sqlite3", path.Join(opts.DataPath, "crypto.db"))
-		if err != nil {
-			return nil, fmt.Errorf("couldn't open crypto db: %w", err)
-		}
-		defer cryptoDB.Close()
-
-		db, err := dbutil.NewWithDB(cryptoDB, "sqlite3")
-		if err != nil {
-			return nil, fmt.Errorf("couldn't create crypto db: %w", err)
-		}
-
-		cryptoStore := crypto.NewSQLCryptoStore(
-			db,
-			dbutil.MauLogger(maulogger.DefaultLogger),
-			fmt.Sprintf("%s/%s", client.UserID, client.DeviceID),
-			client.DeviceID,
-			[]byte("argocd"),
-		)
-
-		err = cryptoStore.Upgrade()
-		if err != nil {
-			return nil, fmt.Errorf("couldn't upgrade crypto store tables: %w", err)
-		}
-
-		olmMachine := crypto.NewOlmMachine(client, cryptoLogger, cryptoStore, store)
-		err = olmMachine.Load()
-		if err != nil {
-			return nil, fmt.Errorf("couldn't load olm machine: %w", err)
-		}
-
-		syncer := client.Syncer.(*mautrix.DefaultSyncer)
-		syncer.OnSync(olmMachine.ProcessSyncResponse)
-		syncer.OnEventType(event.StateMember, func(_ mautrix.EventSource, evt *event.Event) {
-			olmMachine.HandleMemberEvent(evt)
-		})
-		syncer.OnEvent(store.UpdateState)
-		syncer.OnEvent(func(_ mautrix.EventSource, evt *event.Event) {
-			err := olmMachine.FlushStore()
-			if err != nil {
-				panic(err)
-			}
-		})
-		go client.Sync()
+	// set up e2ee if possible
+	err = matrixInitCrypto(client, opts)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't initialize matrix crypto: %w", err)
 	}
 
 	return &matrixService{client, opts}, nil
@@ -165,6 +115,66 @@ func (s *matrixService) Send(notification Notification, dest Destination) error 
 	if err != nil {
 		return fmt.Errorf("couldn't send matrix message: %w", err)
 	}
+	return nil
+}
+
+func matrixInitCrypto(client *mautrix.Client, opts MatrixOptions) error {
+	// if there's no datapath, we can't story e2ee keys
+	if opts.DataPath == "" {
+		log.Infof("no datapath configured; skipping end-to-end encryption setup")
+		return nil
+	}
+
+	client.Syncer = newMatrixSyncer()
+	store, err := newMatrixStore(opts.DataPath)
+	if err != nil {
+		return fmt.Errorf("couldn't create matrix store for crypto: %w", err)
+	}
+	cryptoLogger := matrixCryptoLogger{}
+
+	cryptoDB, err := sql.Open("sqlite3", path.Join(opts.DataPath, "crypto.db"))
+	if err != nil {
+		return fmt.Errorf("couldn't open crypto db: %w", err)
+	}
+	defer cryptoDB.Close()
+
+	db, err := dbutil.NewWithDB(cryptoDB, "sqlite3")
+	if err != nil {
+		return fmt.Errorf("couldn't create crypto db: %w", err)
+	}
+
+	cryptoStore := crypto.NewSQLCryptoStore(
+		db,
+		dbutil.MauLogger(maulogger.DefaultLogger),
+		fmt.Sprintf("%s/%s", client.UserID, client.DeviceID),
+		client.DeviceID,
+		[]byte("argocd"),
+	)
+
+	err = cryptoStore.Upgrade()
+	if err != nil {
+		return fmt.Errorf("couldn't upgrade crypto store tables: %w", err)
+	}
+
+	olmMachine := crypto.NewOlmMachine(client, cryptoLogger, cryptoStore, store)
+	err = olmMachine.Load()
+	if err != nil {
+		return fmt.Errorf("couldn't load olm machine: %w", err)
+	}
+
+	syncer := client.Syncer.(*mautrix.DefaultSyncer)
+	syncer.OnSync(olmMachine.ProcessSyncResponse)
+	syncer.OnEventType(event.StateMember, func(_ mautrix.EventSource, evt *event.Event) {
+		olmMachine.HandleMemberEvent(evt)
+	})
+	syncer.OnEvent(store.UpdateState)
+	syncer.OnEvent(func(_ mautrix.EventSource, evt *event.Event) {
+		err := olmMachine.FlushStore()
+		if err != nil {
+			panic(err)
+		}
+	})
+	go client.Sync()
 	return nil
 }
 
