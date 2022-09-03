@@ -82,7 +82,7 @@ func (s *matrixService) Send(notification Notification, dest Destination) error 
 	}
 
 	client := s.client
-	cryptoEnabled := s.olmMachine != nil
+	cryptoDisabled := s.olmMachine == nil
 
 	// assume destination is a room ID
 	roomID := id.RoomID(dest.Recipient)
@@ -107,7 +107,7 @@ func (s *matrixService) Send(notification Notification, dest Destination) error 
 	if mem == event.MembershipBan {
 		return fmt.Errorf("can't send to matrix room '%s' where we're banned", roomID)
 	} else if mem != event.MembershipJoin {
-		if isEncrypted && !cryptoEnabled {
+		if isEncrypted && cryptoDisabled {
 			return fmt.Errorf("won't join encrypted matrix room '%s' when crypto is not configured", roomID)
 		}
 		_, err := client.JoinRoom(roomID.String(), serverName, nil)
@@ -129,7 +129,7 @@ func (s *matrixService) Send(notification Notification, dest Destination) error 
 
 	// encrypt event when we need to and error if e2ee isn't setup
 	if isEncrypted {
-		if s.olmMachine == nil {
+		if cryptoDisabled {
 			return fmt.Errorf("can't send to encrypted matrix room since crypto is not setup; make sure dataPath is set")
 		}
 		store := client.Store.(*matrixStore)
