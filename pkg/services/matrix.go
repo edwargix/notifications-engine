@@ -223,7 +223,7 @@ func matrixInitCrypto(dataPath string, client *mautrix.Client) (*crypto.OlmMachi
 	syncer.OnEvent(func(_ mautrix.EventSource, evt *event.Event) {
 		err := olmMachine.FlushStore()
 		if err != nil {
-			panic(err)
+			panic(fmt.Errorf("couldn't flush olm machine store: %w", err))
 		}
 	})
 
