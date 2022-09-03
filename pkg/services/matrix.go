@@ -108,7 +108,7 @@ func (s *matrixService) Send(notification Notification, dest Destination) error 
 		return fmt.Errorf("can't send to matrix room '%s' where we're banned", roomID)
 	} else if mem != event.MembershipJoin {
 		if isEncrypted && cryptoDisabled {
-			return fmt.Errorf("won't join encrypted matrix room '%s' when crypto is not configured", roomID)
+			return fmt.Errorf("won't join encrypted matrix room '%s' when crypto is not configured; make sure dataPath is set", roomID)
 		}
 		_, err := client.JoinRoom(roomID.String(), serverName, nil)
 		if err != nil {
