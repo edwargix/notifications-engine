@@ -49,18 +49,25 @@ func NewMatrixService(opts MatrixOptions) (NotificationService, error) {
 	// normally gets set during client.Login
 	client.DeviceID = opts.DeviceID
 
+	service := &matrixService{
+		client: client,
+		opts:   opts,
+	}
+
 	// set up e2ee if possible
-	err = matrixInitCrypto(client, opts)
+	err = matrixInitCrypto(service)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't initialize matrix crypto: %w", err)
 	}
 
-	return &matrixService{client, opts}, nil
+	return service, nil
 }
 
 type matrixService struct {
-	client *mautrix.Client
-	opts   MatrixOptions
+	client     *mautrix.Client
+	olmMachine *crypto.OlmMachine
+	opts       MatrixOptions
+	store      *matrixStore
 }
 
 func (s *matrixService) Send(notification Notification, dest Destination) error {
@@ -86,6 +93,7 @@ func (s *matrixService) Send(notification Notification, dest Destination) error 
 
 	markdownContent := format.RenderMarkdown(notification.Message, true, true)
 
+	// TODO use room state instead
 	resp, err := s.client.JoinedRooms()
 	if err != nil {
 		log.Errorf("couldn't fetch list of joined rooms; will attempt to send message regardless: %s", err)
@@ -105,34 +113,65 @@ func (s *matrixService) Send(notification Notification, dest Destination) error 
 		}
 	}
 
-	_, err = s.client.SendMessageEvent(roomID, event.EventMessage, &event.MessageEventContent{
+	evtType := event.EventMessage
+	var content interface{} = &event.MessageEventContent{
 		MsgType: event.MsgNotice,
 		Body:    markdownContent.Body,
 
 		Format:        markdownContent.Format,
 		FormattedBody: markdownContent.FormattedBody,
-	})
+	}
+
+	if s.store != nil && s.olmMachine != nil && s.store.IsEncrypted(roomID) {
+		encrypted, err := s.olmMachine.EncryptMegolmEvent(roomID, evtType, content)
+		if isBadEncryptError(err) {
+			return fmt.Errorf("couldn't encrypt matrix event: %w", err)
+		}
+		log.Debugf("got '%v' error while trying to encrypt matrix message; sharing group session and trying again...", err)
+		err = s.olmMachine.ShareGroupSession(roomID, s.store.GetRoomMembers(roomID))
+		if err != nil {
+			return fmt.Errorf("couldn't share matrix group session: %w", err)
+		}
+		encrypted, err = s.olmMachine.EncryptMegolmEvent(roomID, evtType, content)
+		if err != nil {
+			// the (2) is there to distinguish from the error above
+			return fmt.Errorf("couldn't encrypt matrix event(2): %w", err)
+		}
+		evtType = event.EventEncrypted
+		content = encrypted
+	}
+
+	r, err := s.client.SendMessageEvent(roomID, evtType, content)
 	if err != nil {
 		return fmt.Errorf("couldn't send matrix message: %w", err)
 	}
+	log.Infof("sent matrix event %s", r.EventID.String())
 	return nil
 }
 
-func matrixInitCrypto(client *mautrix.Client, opts MatrixOptions) error {
-	// if there's no datapath, we can't story e2ee keys
-	if opts.DataPath == "" {
-		log.Infof("no datapath configured; skipping end-to-end encryption setup")
+func isBadEncryptError(err error) bool {
+	return err != crypto.SessionExpired && err != crypto.SessionNotShared && err != crypto.NoGroupSession
+}
+
+func matrixInitCrypto(service *matrixService) error {
+	// if there's no datapath, we can't store e2ee keys
+	dataPath := service.opts.DataPath
+	if dataPath == "" {
+		log.Infof("no datapath configured for matrix service; skipping end-to-end encryption setup")
 		return nil
 	}
 
-	store, err := newMatrixStore(opts.DataPath)
+	store, err := newMatrixStore(dataPath)
 	if err != nil {
 		return fmt.Errorf("couldn't create matrix store for crypto: %w", err)
 	}
+
+	client := service.client
 	client.Syncer = newMatrixSyncer(store)
+
 	cryptoLogger := matrixCryptoLogger{}
 
-	cryptoDB, err := sql.Open("sqlite3", path.Join(opts.DataPath, "crypto.db"))
+	cryptoDB, err := sql.Open("sqlite3", path.Join(dataPath, "crypto.db"))
 	if err != nil {
 		return fmt.Errorf("couldn't open crypto db: %w", err)
 	}
@@ -173,6 +212,10 @@ func matrixInitCrypto(client *mautrix.Client, opts MatrixOptions) error {
 			panic(err)
 		}
 	})
+
+	service.olmMachine = olmMachine
+	service.store = store
+
 	go func() {
 		err := client.Sync()
 		if err != nil {
