@@ -82,6 +82,7 @@ func (s *matrixService) Send(notification Notification, dest Destination) error 
 	}
 
 	client := s.client
+	cryptoEnabled := s.olmMachine != nil
 
 	// assume destination is a room ID
 	roomID := id.RoomID(dest.Recipient)
@@ -99,20 +100,24 @@ func (s *matrixService) Send(notification Notification, dest Destination) error 
 		_, serverName, _ = strings.Cut(roomAlias.String(), ":")
 	}
 
-	markdownContent := format.RenderMarkdown(notification.Message, true, true)
-
 	// join room if possible
 	room := client.Store.LoadRoom(roomID)
 	mem := room.GetMembershipState(client.UserID)
+	isEncrypted := room.GetStateEvent(event.StateEncryption, "") != nil
 	if mem == event.MembershipBan {
 		return fmt.Errorf("can't send to matrix room '%s' where we're banned", roomID)
 	} else if mem != event.MembershipJoin {
+		if isEncrypted && !cryptoEnabled {
+			return fmt.Errorf("won't join encrypted matrix room '%s' when crypto is not configured", roomID)
+		}
 		_, err := client.JoinRoom(roomID.String(), serverName, nil)
 		if err != nil {
 			return fmt.Errorf("couldn't join matrix room '%s': %w", roomID, err)
 		}
 	}
 
+	// message content
+	markdownContent := format.RenderMarkdown(notification.Message, true, true)
 	evtType := event.EventMessage
 	var content interface{} = &event.MessageEventContent{
 		MsgType: event.MsgNotice,
@@ -123,7 +128,6 @@ func (s *matrixService) Send(notification Notification, dest Destination) error 
 	}
 
 	// encrypt event when we need to and error if e2ee isn't setup
-	isEncrypted := room.GetStateEvent(event.StateEncryption, "") != nil
 	if isEncrypted {
 		if s.olmMachine == nil {
 			return fmt.Errorf("can't send to encrypted matrix room since crypto is not setup; make sure dataPath is set")
@@ -157,7 +161,7 @@ func (s *matrixService) Send(notification Notification, dest Destination) error 
 	if err != nil {
 		return fmt.Errorf("couldn't send matrix message: %w", err)
 	}
-	log.Infof("sent matrix event %s", r.EventID.String())
+	log.Infof("sent matrix event '%s'", r.EventID.String())
 
 	return nil
 }
