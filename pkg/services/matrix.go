@@ -117,19 +117,24 @@ func (s *matrixService) Send(notification Notification, dest Destination) error 
 	}
 
 	if s.olmMachine != nil && s.store.IsEncrypted(roomID) {
+		triedSharedGroupSession := false
+	encrypt:
 		encrypted, err := s.olmMachine.EncryptMegolmEvent(roomID, evtType, content)
-		if isBadEncryptError(err) {
-			return fmt.Errorf("couldn't encrypt matrix event: %w", err)
-		}
-		log.Debugf("got '%v' error while trying to encrypt matrix message; sharing group session and trying again...", err)
-		err = s.olmMachine.ShareGroupSession(roomID, s.store.GetRoomMembers(roomID))
 		if err != nil {
-			return fmt.Errorf("couldn't share matrix group session: %w", err)
-		}
-		encrypted, err = s.olmMachine.EncryptMegolmEvent(roomID, evtType, content)
-		if err != nil {
-			// the (2) is there to distinguish from the error above
-			return fmt.Errorf("couldn't encrypt matrix event(2): %w", err)
+			if isBadEncryptError(err) {
+				return fmt.Errorf("couldn't encrypt matrix event: %w", err)
+			}
+			if triedSharedGroupSession {
+				return fmt.Errorf("couldn't encrypt matrix event even after sharing group session: %w", err)
+			}
+
+			log.Debugf("got '%v' error while trying to encrypt matrix message; sharing group session and trying again...", err)
+			err = s.olmMachine.ShareGroupSession(roomID, s.store.GetRoomMembers(roomID))
+			if err != nil {
+				return fmt.Errorf("couldn't share matrix group session: %w", err)
+			}
+			triedSharedGroupSession = true
+			goto encrypt
 		}
 		evtType = event.EventEncrypted
 		content = encrypted
