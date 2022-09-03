@@ -125,11 +125,11 @@ func matrixInitCrypto(client *mautrix.Client, opts MatrixOptions) error {
 		return nil
 	}
 
-	client.Syncer = newMatrixSyncer()
 	store, err := newMatrixStore(opts.DataPath)
 	if err != nil {
 		return fmt.Errorf("couldn't create matrix store for crypto: %w", err)
 	}
+	client.Syncer = newMatrixSyncer(store)
 	cryptoLogger := matrixCryptoLogger{}
 
 	cryptoDB, err := sql.Open("sqlite3", path.Join(opts.DataPath, "crypto.db"))
@@ -179,12 +179,23 @@ func matrixInitCrypto(client *mautrix.Client, opts MatrixOptions) error {
 
 type matrixSyncer struct {
 	*mautrix.DefaultSyncer
+	store *matrixStore
 }
 
-func newMatrixSyncer() mautrix.Syncer {
+func newMatrixSyncer(store *matrixStore) mautrix.Syncer {
 	return &matrixSyncer{
 		mautrix.NewDefaultSyncer(),
+		store,
 	}
+}
+
+func (s *matrixSyncer) ProcessResponse(res *mautrix.RespSync, since string) error {
+	err := s.DefaultSyncer.ProcessResponse(res, since)
+	if err != nil {
+		return err
+	}
+	s.store.Save()
+	return nil
 }
 
 func (s *matrixSyncer) GetFilterJSON(userID id.UserID) *mautrix.Filter {
@@ -294,8 +305,6 @@ func (s *matrixStore) SaveNextBatch(userID id.UserID, nextBatchToken string) {
 		return
 	}
 	s.NextBatches[userID] = nextBatchToken
-
-	s.Save()
 }
 
 func (s *matrixStore) LoadNextBatch(userID id.UserID) string {
@@ -308,7 +317,6 @@ func (s *matrixStore) SaveRoom(room *mautrix.Room) {
 	s.Lock()
 	defer s.Unlock()
 	s.Rooms[room.ID] = room
-	s.Save()
 }
 
 func (s *matrixStore) LoadRoom(roomID id.RoomID) *mautrix.Room {
@@ -327,7 +335,6 @@ func (s *matrixStore) UpdateState(_ mautrix.EventSource, evt *event.Event) {
 		s.SaveRoom(room)
 	}
 	room.UpdateState(evt)
-	s.Save()
 }
 
 // crypto.StateStore interface implemented below
