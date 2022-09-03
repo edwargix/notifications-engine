@@ -122,7 +122,7 @@ func (s *matrixService) Send(notification Notification, dest Destination) error 
 		FormattedBody: markdownContent.FormattedBody,
 	}
 
-	if s.store != nil && s.olmMachine != nil && s.store.IsEncrypted(roomID) {
+	if s.store != nil && s.store.IsEncrypted(roomID) {
 		encrypted, err := s.olmMachine.EncryptMegolmEvent(roomID, evtType, content)
 		if isBadEncryptError(err) {
 			return fmt.Errorf("couldn't encrypt matrix event: %w", err)
