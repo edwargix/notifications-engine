@@ -66,14 +66,12 @@ func NewMatrixService(opts MatrixOptions) (NotificationService, error) {
 	return &matrixService{
 		client,
 		olmMachine,
-		opts,
 	}, nil
 }
 
 type matrixService struct {
 	client     *mautrix.Client
 	olmMachine *crypto.OlmMachine
-	opts       MatrixOptions
 }
 
 func (s *matrixService) Send(notification Notification, dest Destination) error {
