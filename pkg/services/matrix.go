@@ -173,7 +173,12 @@ func matrixInitCrypto(client *mautrix.Client, opts MatrixOptions) error {
 			panic(err)
 		}
 	})
-	go client.Sync()
+	go func() {
+		err := client.Sync()
+		if err != nil {
+			log.Errorf("matrix client sync failed: %v", err)
+		}
+	}()
 	return nil
 }
 
