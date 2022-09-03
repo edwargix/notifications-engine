@@ -53,8 +53,11 @@ func NewMatrixService(opts MatrixOptions) (NotificationService, error) {
 		log.Infof("no datapath configured; skipping end-to-end encryption setup")
 	} else {
 		// set up e2ee
+		store, err := newMatrixStore(opts.DataPath)
+		if err != nil {
+			return nil, fmt.Errorf("couldn't create matrix store for crypto: %w", err)
+		}
 		client.Syncer = newMatrixSyncer()
-		store := newMatrixStore(opts.DataPath)
 		cryptoLogger := matrixCryptoLogger{}
 
 		cryptoDB, err := sql.Open("sqlite3", path.Join(opts.DataPath, "crypto.db"))
@@ -199,39 +202,51 @@ func (s *matrixSyncer) GetFilterJSON(userID id.UserID) *mautrix.Filter {
 type matrixStore struct {
 	sync.RWMutex
 
-	storePath   string
-	filterIDs   map[id.UserID]string        `json:"-"`
+	storePath   string                      `json:"-"`
+
+	FilterIDs   map[id.UserID]string        `json:"-"`
 	NextBatches map[id.UserID]string        `json:"next_batches"`
 	Rooms       map[id.RoomID]*mautrix.Room `json:"rooms"`
 }
 
-func newMatrixStore(dataPath string) *matrixStore {
-	decode := func(path string, ptr interface{}) {
-	}
-
+func newMatrixStore(dataPath string) (*matrixStore, error) {
+	filterIDs := make(map[id.UserID]string)
 	nextBatches := make(map[id.UserID]string)
-	nextBatchesPath := path.Join(dataPath, "next_batches.json")
 	rooms := make(map[id.RoomID]*mautrix.Room)
+
 	storePath := path.Join(dataPath, "store.json")
 
-	f, err := os.Open(path)
-	if err != nil {
-		log.Warnf("couldn't open file %s for matrix store: %v", path, err)
-		return
-	}
-	err = json.NewDecoder(f).Decode(ptr)
-	if err != nil {
-		log.Warnf("couldn't decode file %s for matrix store: %v", path, err)
-		return
+	store := &matrixStore{
+		sync.RWMutex{},
+		storePath,
+		filterIDs,
+		nextBatches,
+		rooms,
 	}
 
-	go decode(nextBatchesPath, &nextBatches)
-	go decode(storePath, &rooms)
+	f, err := os.Open(storePath)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't open file %s for reading matrix store: %w", storePath, err)
+	}
+	err = json.NewDecoder(f).Decode(&store)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't decode matrix store when reading file %s: %w", storePath, err)
+	}
 
-	return &matrixStore{
-		filterIDs:       make(map[id.UserID]string),
-		NextBatches:     nextBatches,
-		Rooms:           rooms,
+	return store, nil
+}
+
+func (s *matrixStore) Save() {
+	f, err := os.OpenFile(s.storePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		log.Errorf("couldn't open file %s for writing matrix store: %v", s.storePath, err)
+		return
+	}
+	defer f.Close()
+	err = json.NewEncoder(f).Encode(s)
+	if err != nil {
+		log.Errorf("couldn't encode matrix store when writing to file %s: %v", s.storePath, err)
+		return
 	}
 }
 
@@ -240,13 +255,13 @@ func newMatrixStore(dataPath string) *matrixStore {
 func (s *matrixStore) SaveFilterID(userID id.UserID, filterID string) {
 	s.Lock()
 	defer s.Unlock()
-	s.filterIDs[userID] = filterID
+	s.FilterIDs[userID] = filterID
 }
 
 func (s *matrixStore) LoadFilterID(userID id.UserID) string {
 	s.RLock()
 	defer s.RUnlock()
-	return s.filterIDs[userID]
+	return s.FilterIDs[userID]
 }
 
 func (s *matrixStore) SaveNextBatch(userID id.UserID, nextBatchToken string) {
@@ -257,13 +272,7 @@ func (s *matrixStore) SaveNextBatch(userID id.UserID, nextBatchToken string) {
 	}
 	s.NextBatches[userID] = nextBatchToken
 
-	f, err := os.OpenFile(s.NextBatchesPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-	if err != nil {
-		log.Errorf("couldn't open next batch file for matrix service: %v", err)
-		return
-	}
-	defer f.Close()
-	f.WriteString(nextBatchToken)
+	s.Save()
 }
 
 func (s *matrixStore) LoadNextBatch(userID id.UserID) string {
@@ -276,6 +285,7 @@ func (s *matrixStore) SaveRoom(room *mautrix.Room) {
 	s.Lock()
 	defer s.Unlock()
 	s.Rooms[room.ID] = room
+	s.Save()
 }
 
 func (s *matrixStore) LoadRoom(roomID id.RoomID) *mautrix.Room {
@@ -294,6 +304,7 @@ func (s *matrixStore) UpdateState(_ mautrix.EventSource, evt *event.Event) {
 		s.SaveRoom(room)
 	}
 	room.UpdateState(evt)
+	s.Save()
 }
 
 // crypto.StateStore interface implemented below
