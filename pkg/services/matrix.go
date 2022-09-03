@@ -67,7 +67,6 @@ type matrixService struct {
 	client     *mautrix.Client
 	olmMachine *crypto.OlmMachine
 	opts       MatrixOptions
-	store      *matrixStore
 }
 
 func (s *matrixService) Send(notification Notification, dest Destination) error {
@@ -116,35 +115,43 @@ func (s *matrixService) Send(notification Notification, dest Destination) error 
 		FormattedBody: markdownContent.FormattedBody,
 	}
 
-	if s.olmMachine != nil && s.store.IsEncrypted(roomID) {
-		triedSharedGroupSession := false
+	// encrypt event when we need to and error if e2ee isn't setup
+	isEncrypted := room.GetStateEvent(event.StateEncryption, "") != nil
+	if isEncrypted {
+		if s.olmMachine == nil {
+			return fmt.Errorf("can't send to encrypted matrix room since crypto is not setup; make sure dataPath is set")
+		}
+		store := client.Store.(*matrixStore)
+		triedSharingGroupSession := false
 	encrypt:
 		encrypted, err := s.olmMachine.EncryptMegolmEvent(roomID, evtType, content)
 		if err != nil {
 			if isBadEncryptError(err) {
 				return fmt.Errorf("couldn't encrypt matrix event: %w", err)
 			}
-			if triedSharedGroupSession {
+			if triedSharingGroupSession {
 				return fmt.Errorf("couldn't encrypt matrix event even after sharing group session: %w", err)
 			}
 
 			log.Debugf("got '%v' error while trying to encrypt matrix message; sharing group session and trying again...", err)
-			err = s.olmMachine.ShareGroupSession(roomID, s.store.GetRoomMembers(roomID))
+			err = s.olmMachine.ShareGroupSession(roomID, store.GetRoomMembers(roomID))
 			if err != nil {
 				return fmt.Errorf("couldn't share matrix group session: %w", err)
 			}
-			triedSharedGroupSession = true
+			triedSharingGroupSession = true
 			goto encrypt
 		}
 		evtType = event.EventEncrypted
 		content = encrypted
 	}
 
+	// send the event
 	r, err := client.SendMessageEvent(roomID, evtType, content)
 	if err != nil {
 		return fmt.Errorf("couldn't send matrix message: %w", err)
 	}
 	log.Infof("sent matrix event %s", r.EventID.String())
+
 	return nil
 }
 
@@ -202,6 +209,7 @@ func matrixInitCrypto(service *matrixService) error {
 	if err != nil {
 		return fmt.Errorf("couldn't load olm machine: %w", err)
 	}
+	service.olmMachine = olmMachine
 
 	syncer := client.Syncer.(*mautrix.DefaultSyncer)
 	syncer.OnSync(olmMachine.ProcessSyncResponse)
@@ -214,9 +222,6 @@ func matrixInitCrypto(service *matrixService) error {
 			panic(err)
 		}
 	})
-
-	service.olmMachine = olmMachine
-	service.store = store
 
 	go func() {
 		err := client.Sync()
