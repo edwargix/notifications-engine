@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"path"
 	"strings"
 	"sync"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 	log "github.com/sirupsen/logrus"
@@ -49,6 +51,11 @@ func NewMatrixService(opts MatrixOptions) (NotificationService, error) {
 	// normally gets set during client.Login
 	client.DeviceID = opts.DeviceID
 
+	ctx, cancelSync := context.WithCancel(context.Background())
+
+	syncer := newMatrixSyncer(client, nil, nil)
+	client.Syncer = syncer
+
 	// set up e2ee if possible
 	var olmMachine *crypto.OlmMachine
 	if dataPath := opts.DataPath; dataPath != "" {
@@ -64,7 +71,9 @@ func NewMatrixService(opts MatrixOptions) (NotificationService, error) {
 	}
 
 	go func() {
-		err := client.Sync()
+		// err := client.Sync()
+		// syncer.isSyncing.Lock()
+		err := client.SyncWithContext(ctx)
 		if err != nil {
 			log.Errorf("matrix client sync failed: %v", err)
 		}
@@ -73,12 +82,14 @@ func NewMatrixService(opts MatrixOptions) (NotificationService, error) {
 	return &matrixService{
 		client,
 		olmMachine,
+		cancelSync,
 	}, nil
 }
 
 type matrixService struct {
 	client     *mautrix.Client
 	olmMachine *crypto.OlmMachine
+	cancelSync context.CancelFunc
 }
 
 func (s *matrixService) Send(notification Notification, dest Destination) error {
@@ -88,6 +99,10 @@ func (s *matrixService) Send(notification Notification, dest Destination) error 
 
 	client := s.client
 	cryptoDisabled := s.olmMachine == nil
+
+	syncer := client.Syncer.(*matrixSyncer)
+	// syncer.isSyncing.Lock()
+	syncer.FullSyncNow()
 
 	// assume destination is a room ID
 	roomID := id.RoomID(dest.Recipient)
@@ -181,7 +196,7 @@ func matrixInitCrypto(dataPath string, client *mautrix.Client) (*crypto.OlmMachi
 		return nil, fmt.Errorf("couldn't create matrix store for crypto: %w", err)
 	}
 
-	client.Syncer = newMatrixSyncer(store)
+	client.Syncer = newMatrixSyncer(client, store)
 	client.Store = store
 
 	cryptoLogger := matrixCryptoLogger{}
@@ -232,14 +247,58 @@ func matrixInitCrypto(dataPath string, client *mautrix.Client) (*crypto.OlmMachi
 
 type matrixSyncer struct {
 	*mautrix.DefaultSyncer
+	client *mautrix.Client
 	store *matrixStore
+	cancelSync context.CancelFunc
+	cancelWait context.CancelFunc
+	// isSyncing sync.Mutex
 }
 
-func newMatrixSyncer(store *matrixStore) mautrix.Syncer {
+func newMatrixSyncer(client *mautrix.Client, store *matrixStore, cancelSync context.CancelFunc) *matrixSyncer {
 	return &matrixSyncer{
 		mautrix.NewDefaultSyncer(),
+		client,
 		store,
+		cancelSync,
+		nil,
+		// sync.Mutex{},
 	}
+}
+
+func emptySyncResp(res *mautrix.RespSync) bool {
+	return 0 == (len(res.AccountData.Events) +
+		len(res.Presence.Events) +
+		len(res.ToDevice.Events) +
+		len(res.DeviceLists.Changed) +
+		len(res.DeviceLists.Left) +
+		len(res.Rooms.Leave) +
+		len(res.Rooms.Join) +
+		len(res.Rooms.Invite))
+}
+
+func (s *matrixSyncer) FullSyncNow() error {
+	// s.cancelWait()
+	s.cancelSync()
+	// s.isSyncing.Lock()
+
+	client := s.client
+	done := false
+
+	for done {
+		since := client.Store.LoadNextBatch(client.UserID)
+		res, err := client.SyncRequest(0, since, client.Store.LoadFilterID(client.UserID), false, client.SyncPresence, context.Background())
+		if err != nil {
+			// TODO
+		}
+		client.Store.SaveNextBatch(client.UserID, res.NextBatch)
+		err = client.Syncer.ProcessResponse(res, since)
+		if err != nil {
+			// TODO
+		}
+		done = emptySyncResp(res)
+	}
+
+	return nil
 }
 
 func (s *matrixSyncer) ProcessResponse(res *mautrix.RespSync, since string) error {
@@ -248,6 +307,28 @@ func (s *matrixSyncer) ProcessResponse(res *mautrix.RespSync, since string) erro
 		return err
 	}
 	s.store.Save()
+
+	if emptySyncResp(res) {
+		// sync response was empty, so stop syncing and wait for 15
+		// minutes or until wait is canceled
+
+		s.cancelSync()
+		var waitCtx context.Context
+		waitCtx, s.cancelWait = context.WithCancel(context.Background())
+		s.isSyncing.Unlock()
+		go func() {
+			select {
+			case <-time.After(15 * time.Minute):
+				s.isSyncing.Lock()
+				var syncCtx context.Context
+				syncCtx, s.cancelSync = context.WithCancel(context.Background())
+				s.client.SyncWithContext(syncCtx)
+				s.cancelWait = nil
+			case <-waitCtx.Done():
+			}
+		}()
+	}
+
 	return nil
 }
 
