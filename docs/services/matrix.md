@@ -1,6 +1,6 @@
 # Matrix
 
-**NOTE:** end-to-end encryption for Matrix notifications is not yet supported because CGO is not supported
+**NOTE:** native end-to-end encryption for Matrix notifications is not yet supported because CGO is not supported by Argo.  Those wanting to have end-to-end encrypiton can setup [pantalaimon](https://github.com/matrix-org/pantalaimon).
 
 To be able to send notifications via Matrix, do the following steps:
 
