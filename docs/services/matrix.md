@@ -1,6 +1,6 @@
 # Matrix
 
-**NOTE:** native end-to-end encryption (e2ee) for Matrix notifications is not yet supported because CGO is not supported by Argo.  Those who want end-to-end encryption support for their Argo notifications bot can setup [pantalaimon](https://github.com/matrix-org/pantalaimon).
+**NOTE:** native end-to-end encryption (e2ee) for Matrix notifications is not yet supported because CGO, which is needed to link to [libolm](https://gitlab.matrix.org/matrix-org/olm), is not supported by Argo.  Those who want end-to-end encryption support for their Argo notifications bot can setup [pantalaimon](https://github.com/matrix-org/pantalaimon).
 
 To be able to send notifications via Matrix, do the following steps:
 
