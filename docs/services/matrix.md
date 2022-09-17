@@ -43,7 +43,8 @@ Then, run the following commands:
 export SERVER_NAME=$(printf "$USERID" | cut -d: -f2-)
 export HOMESERVER_URL=$(curl -LSs https://${SERVER_NAME}/.well-known/matrix/client | jq -r '."m.homeserver"."base_url"')
 
-RESP=`curl -d "{\"type\": \"m.login.password\", \"identifier\": {\"type\": \"m.id.user\", \"user\": \"$USERID\"}, \"password\": \"$PASSWORD\"}" -X POST $HOMESERVER_URL/_matrix/client/v3/login`
+RESP=`curl -d "{\"type\": \"m.login.password\", \"identifier\": {\"type\": \"m.id.user\", \"user\": \"$USERID\"}, \"password\": \"$PASSWORD\"}" \
+    -X POST $HOMESERVER_URL/_matrix/client/v3/login`
 
 export ACCESS_TOKEN=`printf "$RESP" | jq -r .access_token`
 export DEVICEID=`printf "$RESP" | jq -r .device_id`
