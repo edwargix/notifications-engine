@@ -21,13 +21,15 @@ can register a new user with the endpoint explained here:
 
 ## Generate an access token and device ID using the account
 
-For example, suppose your user ID is `@foo:example.org`.  Then, you'd use your server name in 
+For example, suppose your user ID is `@foo:example.org`.  Then, you'd use your server name in
 
 ```sh
 # set this to your server name; e.g. matrix.org
 export SERVER_NAME="example.org"
 export HOMESERVER_URL=$(curl -LSs https://${SERVER_NAME}/.well-known/matrix/client | jq -r '."m.homeserver"."base_url"')
-curl -Ss -X POST
+# replace <user_id> with your user ID (@localpart:server.tld) and
+# <password> with the password set during registration
+RESP=`curl -d '{"type": "m.login.password", "identifier": {"type": "m.id.user", "user": "<user_id>"}, "password": "<password>"}' -X POST $HOMESERVER_URL/_matrix/client/v3/login`
 ```
 
 ## Configure notifiers and subscription recipients
@@ -37,4 +39,4 @@ The Matrix notification service send matrix
 * `accessToken` - the access token retrieved after logging in
 * `deviceID` - the device ID.  Retrieved alongside the access token
 * `homeserverURL` - optional, the homeserver base URL.  If unspecified, the base URL will be retrieved using the [well-known URI](https://spec.matrix.org/v1.3/client-server-api/#well-known-uri), if possible
-* `userID` - the user ID.  Retrieved alongside the access token
+* `userID` - the user ID.  Retrieved alongside the access token.  Of the form `@localpart:server.tld`
