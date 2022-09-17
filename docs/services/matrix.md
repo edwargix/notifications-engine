@@ -25,37 +25,6 @@ endpoint](https://matrix-org.github.io/synapse/latest/admin_api/register_api.htm
 Before beginning, ensure you have `curl`, `jq`, and standard unix shell
 utilities installed.
 
-If you're a homeserver admin, your homeserver is a Synapse instance, and you
-have access to an access token for your admin user, you can use the
-[`/_synapse/admin/v1/users/<user_id>/login`
-endpoint](https://matrix-org.github.io/synapse/latest/admin_api/user_admin_api.html#login-as-a-user)
-to create an access token for your argo user:
-
-<details><summary>Generate token via an existing homeserver admin's token</summary>
-
-Set the environment variables `ADMIN_ACCESS_TOKEN` and `USERID` to the access
-token of your admin user and the user ID of your argo user, respectively.
-
-```sh
-export ADMIN_ACCESS_TOKEN="ch@ngeMe!"
-export USERID="@argocd:example.org"
-```
-
-Then, generate an access token for the argo user with
-
-```sh
-export SERVER_NAME=$(printf "$USERID" | cut -d: -f2-)
-export HOMESERVER_URL=$(curl -LSs https://${SERVER_NAME}/.well-known/matrix/client | jq -r '."m.homeserver"."base_url"')
-
-RESP=`curl -d '{}' $HOMESERVER_URL/_synapse/admin/v1/users/$USERID/login`
-
-echo "Access Token: `printf \"$RESP\" | jq -r .access_token`"
-```
-
-</details>
-
-If you're not a homeserver admin, do the following:
-
 Set the environment variables `USERID` and `PASSWORD` to your argo user's
 ID and password, respectively:
 
