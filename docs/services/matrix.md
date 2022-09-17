@@ -5,7 +5,7 @@
 To be able to send notifications via Matrix, do the following steps:
 
 1. Register a Matrix account
-2. Generate an access token and device ID using the account
+2. Generate an access token and device ID for the account
 3. Upload a profile picture (optional)
 4. Configure notifiers and subscription recipients
 
@@ -21,7 +21,7 @@ access to Synapse, you can register a new user with the
 [`/_synapse/admin/v1/register`
 endpoint](https://matrix-org.github.io/synapse/latest/admin_api/register_api.html).
 
-## Generate an access token and device ID using the account
+## Generate an access token and device ID for the account
 
 Before beginning, ensure you have `curl`, `jq`, and standard unix shell
 utilities installed.
