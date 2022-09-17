@@ -42,14 +42,38 @@ Then, run the following commands:
 ```sh
 export SERVER_NAME=$(printf "$USERID" | cut -d: -f2-)
 export HOMESERVER_URL=$(curl -LSs https://${SERVER_NAME}/.well-known/matrix/client | jq -r '."m.homeserver"."base_url"')
+
 RESP=`curl -d "{\"type\": \"m.login.password\", \"identifier\": {\"type\": \"m.id.user\", \"user\": \"$USERID\"}, \"password\": \"$PASSWORD\"}" -X POST $HOMESERVER_URL/_matrix/client/v3/login`
 
-echo "Access Token: `printf \"$RESP\" | jq -r .access_token`"
-echo "Device ID: `printf \"$RESP\" | jq -r .device_id`"
+export ACCESS_TOKEN=`printf "$RESP" | jq -r .access_token`
+export DEVICEID=`printf "$RESP" | jq -r .device_id`
+
+echo "Access Token: $ACCESS_TOKEN"
+echo "Device ID: $DEVICEID"
 ```
 
 You can now use the the Access Token and Device ID printed in the last command
 as the respective parameters in the next section.
+
+## Upload a profile picture (optional)
+
+It is recommended, though not required, to give your argo user a profile picture, which you'll see next to all argocd Matrix notifications.
+
+**NOTE**: this uses some of the environment variables set in the last section.
+
+```sh
+curl -LSs https://argocd-operator.readthedocs.io/en/stable/assets/logo.png > profile.png
+
+RESP=`curl --data-binary @profile.png \
+    -H 'Content-Type: image/png' \
+    -H "Authorization: Bearer $ACCESS_TOKEN" \
+    "$HOMESERVER_URL/_matrix/media/v3/upload?filename=profile.png"`
+
+PROFILE_URI=`printf "$RESP" | jq -r .content_uri`
+
+curl -d "{\"avatar_url\": \"$PROFILE_URI\"}" \
+    -H "Authorization: Bearer $ACCESS_TOKEN" $HOMESERVER_URL/_matrix/client/v3/profile/$USERID/avatar_url
+```
 
 ## Configure notifiers and subscription recipients
 
