@@ -78,9 +78,9 @@ curl -X PUT -d "{\"avatar_url\": \"$PROFILE_URI\"}" \
 
 ## Configure notifiers and subscription recipients
 
-The Matrix notification service send matrix
+The Matrix notification service requires specifying the following settings:
 
-* `accessToken` - the access token retrieved after logging in
-* `deviceID` - the device ID.  Retrieved alongside the access token
+* `accessToken` - the access token retrieved after logging in.  This was displayed at the end of the [Generate an access token and device ID for the account](#generate-an-access-token-and-device-id-for-the-account) section
+* `deviceID` - the device ID.  Retrieved alongside the access token at the end of the [Generate an access token and device ID for the account](#generate-an-access-token-and-device-id-for-the-account) section
 * `homeserverURL` - optional, the homeserver base URL.  If unspecified, the base URL will be retrieved using the [well-known URI](https://spec.matrix.org/v1.3/client-server-api/#well-known-uri), if possible
 * `userID` - the user ID.  Of the form `@localpart:server.tld`
