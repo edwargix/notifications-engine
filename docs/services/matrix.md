@@ -17,10 +17,10 @@ also be done via `curl`, but this can be difficult for homeservers that require
 multiple steps for registrations (CAPTCHAs, etc).
 
 If your homeserver is a Synapse instance and you have access to the
-`registration_shared_secret` (which is only available to people with shell
-access to Synapse), you can register a new user with the
-`/_synapse/admin/v1/register` endpoint:
-https://matrix-org.github.io/synapse/latest/admin_api/register_api.html
+`registration_shared_secret`, which is only available to people with shell
+access to Synapse, you can register a new user with the
+[`/_synapse/admin/v1/register`
+endpoint](https://matrix-org.github.io/synapse/latest/admin_api/register_api.html).
 
 ## Generate an access token and device ID using the account
 
