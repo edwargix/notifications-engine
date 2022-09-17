@@ -16,7 +16,7 @@ Registering a Matrix account can be done via a standard Matrix client like
 also be done via `curl`, but this can be difficult for homeservers that require
 multiple steps for registrations (CAPTCHAs, etc).
 
-However, if your homeserver is a Synapse instance and you have access to the
+If your homeserver is a Synapse instance and you have access to the
 `registration_shared_secret` (which only available to people with shell access
 to Synapse), you can register a new user with the `/_synapse/admin/v1/register`
 endpoint:
