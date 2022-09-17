@@ -12,7 +12,8 @@ To be able to send notifications via Matrix, do the following steps:
 ## Register a Matrix account
 
 Registering a Matrix account can be done via a standard Matrix client like
-[Element](https://element.io) (or others: <https://matrix.org/clients>).
+[Element](https://element.io) or many others listed at
+<https://matrix.org/clients>.
 
 If your homeserver is a Synapse instance and you have access to the
 `registration_shared_secret`, which is only available to people with shell
