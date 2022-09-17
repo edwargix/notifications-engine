@@ -25,26 +25,34 @@ If you're a homeserver admin and your homeserver is a Synapse instance, you can
 use the [`/_synapse/admin/v1/users/<user_id>/login`
 endpoint](https://matrix-org.github.io/synapse/latest/admin_api/user_admin_api.html#login-as-a-user)
 
-Set the environment variables `SERVER_NAME` and `PASSWORD` to your user's
-server's name and your user's password, respectively.
+If not, do the following:
 
-For example, suppose your user ID is `@foo:example.org`.  Then, you'd use your server name in
+Ensure you have `curl` and `jq` installed.
+
+Then, set the environment variables `USERID` and `PASSWORD` to your user's
+ID and password, respectively:
 
 ```sh
-# set this to your server name.  This is the part after the colon in the user ID
-export SERVER_NAME="example.org"
-
-# set this to the password for your user.  If you need to use a different authentication method, the commands in this guide won't work
-
+# your user's ID.  Of the form "@localpart:domain.tld"
+export USERID="@user:example.org"
+# set this to the password for your user.  If you need to use a different
+# authentication method, the commands in this guide won't work
 export PASSWORD="ch@ngeMe!"
 ```
 
+Then, run the following commands:
+
 ```sh
+export SERVER_NAME=$(printf "$USERID" | cut -d: -f2-)
 export HOMESERVER_URL=$(curl -LSs https://${SERVER_NAME}/.well-known/matrix/client | jq -r '."m.homeserver"."base_url"')
-# replace <user_id> with your user ID (@localpart:server.tld) and
-# <password> with the password set during registration
-RESP=`curl -d '{"type": "m.login.password", "identifier": {"type": "m.id.user", "user": "<user_id>"}, "password": "<password>"}' -X POST $HOMESERVER_URL/_matrix/client/v3/login`
+RESP=`curl -d "{\"type\": \"m.login.password\", \"identifier\": {\"type\": \"m.id.user\", \"user\": \"$USERID\"}, \"password\": \"$PASSWORD\"}" -X POST $HOMESERVER_URL/_matrix/client/v3/login`
+
+echo "Access Token: `printf "$RESP" | jq -r .access_token`"
+echo "Device ID: `printf "$RESP" | jq -r .device_id`"
 ```
+
+You can now use the the Access Token and Device ID printed in the last command
+as the respective parameters in the next section.
 
 ## Configure notifiers and subscription recipients
 
@@ -53,4 +61,4 @@ The Matrix notification service send matrix
 * `accessToken` - the access token retrieved after logging in
 * `deviceID` - the device ID.  Retrieved alongside the access token
 * `homeserverURL` - optional, the homeserver base URL.  If unspecified, the base URL will be retrieved using the [well-known URI](https://spec.matrix.org/v1.3/client-server-api/#well-known-uri), if possible
-* `userID` - the user ID.  Retrieved alongside the access token.  Of the form `@localpart:server.tld`
+* `userID` - the user ID.  Of the form `@localpart:server.tld`
