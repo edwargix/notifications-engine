@@ -11,23 +11,15 @@ To be able to send notifications via Matrix, do the following steps:
 
 ## Register a Matrix account
 
-Registering a Matrix account can be done via a standard Matrix client like
-[Element](https://element.io) or many others listed at
-<https://matrix.org/clients>.
+Registering a Matrix account can be done via a standard Matrix client like [Element](https://element.io) or many others listed at <https://matrix.org/clients>.
 
-If your homeserver is a Synapse instance and you have access to the
-`registration_shared_secret`, which is only available to people with shell
-access to Synapse, you can register a new user with the
-[`/_synapse/admin/v1/register`
-endpoint](https://matrix-org.github.io/synapse/latest/admin_api/register_api.html).
+If your homeserver is a Synapse instance and you have access to the `registration_shared_secret`, which is only available to people with shell access to Synapse, you can register a new user with the [`/_synapse/admin/v1/register` endpoint](https://matrix-org.github.io/synapse/latest/admin_api/register_api.html).
 
 ## Generate an access token and device ID for the account
 
-Before beginning, ensure you have `curl`, `jq`, and standard unix shell
-utilities installed.
+Before beginning, ensure you have `curl`, `jq`, and standard unix shell utilities installed.
 
-Set the environment variables `USERID` and `PASSWORD` to your argo user's
-ID and password, respectively:
+Set the environment variables `USERID` and `PASSWORD` to your argo user's ID and password, respectively:
 
 ```sh
 # your argo user's ID.  Of the form "@localpart:domain.tld"
@@ -53,8 +45,7 @@ echo "Access Token: $ACCESS_TOKEN"
 echo "Device ID: $DEVICEID"
 ```
 
-You can now use the the Access Token and Device ID printed in the last command
-as the respective parameters in the next section.
+You can now use the the Access Token and Device ID printed in the last command as the respective parameters in the next section.
 
 ## Upload a profile picture (optional)
 
