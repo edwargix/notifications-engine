@@ -14,10 +14,13 @@ To be able to send notifications via Matrix, do the following steps:
 Registering a Matrix account can be done via a standard Matrix client like
 [Element](https://element.io) (or others: <https://matrix.org/clients>).  It can
 also be done via `curl`, but this can be difficult for homeservers that require
-multiple steps for registrations (CAPTCHAs, etc).  However, if your homeserver
-is a Synapse instance and you have access to the `registration_shared_secret`,
-you can register a new user with the endpoint explained here:
-<https://matrix-org.github.io/synapse/latest/admin_api/register_api.html>
+multiple steps for registrations (CAPTCHAs, etc).
+
+However, if your homeserver is a Synapse instance and you have access to the
+`registration_shared_secret` (which only available to people with shell access
+to Synapse), you can register a new user with the `/_synapse/admin/v1/register`
+endpoint:
+https://matrix-org.github.io/synapse/latest/admin_api/register_api.html
 
 ## Generate an access token and device ID using the account
 
