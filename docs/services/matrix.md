@@ -4,10 +4,10 @@
 
 To be able to send notifications via Matrix, do the following steps:
 
-1. Register a Matrix account
-2. Generate an access token and device ID for the account
-3. Upload a profile picture (optional)
-4. Configure notifiers and subscription recipients
+1. [Register a Matrix account](#register-a-matrix-account)
+2. [Generate an access token and device ID for the account](#generate-an-access-token-and-device-id-for-the-account)
+3. [Upload a profile picture (optional)](#upload-a-profile-picture-optional)
+4. [Configure notifiers and subscription recipients](#configure-notifiers-and-subscription-recipients)
 
 ## Register a Matrix account
 
