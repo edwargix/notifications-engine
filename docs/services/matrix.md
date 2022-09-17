@@ -21,21 +21,47 @@ you can register a new user with the endpoint explained here:
 
 ## Generate an access token and device ID using the account
 
-If you're a homeserver admin and your homeserver is a Synapse instance, you can
-use the [`/_synapse/admin/v1/users/<user_id>/login`
+Before beginning, ensure you have `curl`, `jq`, and standard unix shell
+utilities installed.
+
+If you're a homeserver admin, your homeserver is a Synapse instance, and you
+have access to an access token for your admin user, you can use the
+[`/_synapse/admin/v1/users/<user_id>/login`
 endpoint](https://matrix-org.github.io/synapse/latest/admin_api/user_admin_api.html#login-as-a-user)
+to create an access token for your argo user:
 
-If not, do the following:
+<details><summary>Generate token via an existing homeserver admin's token</summary>
 
-Ensure you have `curl` and `jq` installed.
+Set the environment variables `ADMIN_ACCESS_TOKEN` and `USERID` to the access
+token of your admin user and the user ID of your argo user, respectively.
 
-Then, set the environment variables `USERID` and `PASSWORD` to your user's
+```sh
+export ADMIN_ACCESS_TOKEN="ch@ngeMe!"
+export USERID="@argocd:example.org"
+```
+
+Then, generate an access token for the argo user with
+
+```sh
+export SERVER_NAME=$(printf "$USERID" | cut -d: -f2-)
+export HOMESERVER_URL=$(curl -LSs https://${SERVER_NAME}/.well-known/matrix/client | jq -r '."m.homeserver"."base_url"')
+
+RESP=`curl -d '{}' $HOMESERVER_URL/_synapse/admin/v1/users/$USERID/login`
+
+echo "Access Token: `printf \"$RESP\" | jq -r .access_token`"
+```
+
+</details>
+
+If you're not a homeserver admin, do the following:
+
+Set the environment variables `USERID` and `PASSWORD` to your argo user's
 ID and password, respectively:
 
 ```sh
-# your user's ID.  Of the form "@localpart:domain.tld"
-export USERID="@user:example.org"
-# set this to the password for your user.  If you need to use a different
+# your argo user's ID.  Of the form "@localpart:domain.tld"
+export USERID="@argocd:example.org"
+# set this to the password for your argo user.  If you need to use a different
 # authentication method, the commands in this guide won't work
 export PASSWORD="ch@ngeMe!"
 ```
@@ -47,8 +73,8 @@ export SERVER_NAME=$(printf "$USERID" | cut -d: -f2-)
 export HOMESERVER_URL=$(curl -LSs https://${SERVER_NAME}/.well-known/matrix/client | jq -r '."m.homeserver"."base_url"')
 RESP=`curl -d "{\"type\": \"m.login.password\", \"identifier\": {\"type\": \"m.id.user\", \"user\": \"$USERID\"}, \"password\": \"$PASSWORD\"}" -X POST $HOMESERVER_URL/_matrix/client/v3/login`
 
-echo "Access Token: `printf "$RESP" | jq -r .access_token`"
-echo "Device ID: `printf "$RESP" | jq -r .device_id`"
+echo "Access Token: `printf \"$RESP\" | jq -r .access_token`"
+echo "Device ID: `printf \"$RESP\" | jq -r .device_id`"
 ```
 
 You can now use the the Access Token and Device ID printed in the last command
