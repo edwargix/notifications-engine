@@ -72,7 +72,7 @@ RESP=`curl --data-binary @profile.png \
 
 PROFILE_URI=`printf "$RESP" | jq -r .content_uri`
 
-curl -d "{\"avatar_url\": \"$PROFILE_URI\"}" \
+curl -X PUT -d "{\"avatar_url\": \"$PROFILE_URI\"}" \
     -H "Authorization: Bearer $ACCESS_TOKEN" $HOMESERVER_URL/_matrix/client/v3/profile/$USERID/avatar_url
 ```
 
