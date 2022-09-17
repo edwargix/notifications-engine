@@ -15,17 +15,31 @@ Registering a Matrix account can be done via a standard Matrix client like
 [Element](https://element.io) (or others: <https://matrix.org/clients>).  It can
 also be done via `curl`, but this can be difficult for homeservers that require
 multiple steps for registrations (CAPTCHAs, etc).  However, if your homeserver
-is running Synapse and you have access to the `registration_shared_secret`, you
-can register a new user with the endpoint explained here:
+is a Synapse instance and you have access to the `registration_shared_secret`,
+you can register a new user with the endpoint explained here:
 <https://matrix-org.github.io/synapse/latest/admin_api/register_api.html>
 
 ## Generate an access token and device ID using the account
 
+If you're a homeserver admin and your homeserver is a Synapse instance, you can
+use the [`/_synapse/admin/v1/users/<user_id>/login`
+endpoint](https://matrix-org.github.io/synapse/latest/admin_api/user_admin_api.html#login-as-a-user)
+
+Set the environment variables `SERVER_NAME` and `PASSWORD` to your user's
+server's name and your user's password, respectively.
+
 For example, suppose your user ID is `@foo:example.org`.  Then, you'd use your server name in
 
 ```sh
-# set this to your server name; e.g. matrix.org
+# set this to your server name.  This is the part after the colon in the user ID
 export SERVER_NAME="example.org"
+
+# set this to the password for your user.  If you need to use a different authentication method, the commands in this guide won't work
+
+export PASSWORD="ch@ngeMe!"
+```
+
+```sh
 export HOMESERVER_URL=$(curl -LSs https://${SERVER_NAME}/.well-known/matrix/client | jq -r '."m.homeserver"."base_url"')
 # replace <user_id> with your user ID (@localpart:server.tld) and
 # <password> with the password set during registration
