@@ -64,7 +64,7 @@ func (s *matrixService) Send(notification Notification, dest Destination) error 
 		}
 		roomID = resp.RoomID
 		roomAliasStr := roomAlias.String()
-		if i := strings.Index(roomAliasStr, ":"); i > 0 {
+		if i := strings.Index(roomAliasStr, ":"); i >= 0 {
 			serverName = roomAliasStr[i+1:]
 		} else {
 			serverName = ""

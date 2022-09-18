@@ -63,7 +63,7 @@ func newTemplateNotifyCommand(cmdContext *commandContext) *cobra.Command {
 
 			for _, recipient := range recipients {
 				var before, after string
-				if i := strings.Index(recipient, ":"); i > 0 {
+				if i := strings.Index(recipient, ":"); i >= 0 {
 					before = recipient[:i]
 					after = recipient[i+1:]
 				} else {
